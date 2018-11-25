@@ -34,13 +34,33 @@ class TargetedDropout(keras.layers.Layer):
     def compute_output_shape(self, input_shape):
         return input_shape
 
-    def _compute_target_mask(self, inputs):
+    def _compute_target_mask(self, inputs, mask=None):
         input_shape = K.shape(inputs)
+        input_type = K.dtype(inputs)
+        mask_threshold = K.constant(1e8, dtype=input_type)
+        channel_num = input_shape[-1]
         channel_dim = K.prod(input_shape[:-1])
-        norm = K.abs(inputs)
-        channeled_norm = K.transpose(K.reshape(norm, (channel_dim, input_shape[-1])))
-        idx = K.cast(self.target_rate * K.cast(channel_dim, K.floatx()), 'int32')
-        threshold = -K.tf.nn.top_k(-channeled_norm, k=idx).values[:, -1]
+        masked_inputs = inputs
+        if mask is not None:
+            masked_inputs = K.switch(
+                K.cast(mask, K.floatx()) > 0.5,
+                masked_inputs,
+                K.ones_like(masked_inputs, dtype=input_type) * mask_threshold
+            )
+        norm = K.abs(masked_inputs)
+        channeled_norm = K.transpose(K.reshape(norm, (channel_dim, channel_num)))
+        weight_num = K.sum(
+            K.reshape(K.cast(masked_inputs < mask_threshold, K.floatx()), (channel_dim, channel_num)),
+            axis=0,
+        )
+        indices = K.stack(
+            [
+                K.arange(channel_num, dtype='int32'),
+                K.cast(self.target_rate * weight_num, dtype='int32') - 1,
+            ],
+            axis=-1,
+        )
+        threshold = -K.tf.gather_nd(K.tf.nn.top_k(-channeled_norm, k=K.max(indices[:, 1]) + 1).values, indices)
         threshold = K.reshape(K.tile(threshold, [channel_dim]), input_shape)
         target_mask = K.switch(
             norm <= threshold,
@@ -49,8 +69,8 @@ class TargetedDropout(keras.layers.Layer):
         )
         return target_mask
 
-    def call(self, inputs, training=None):
-        target_mask = self._compute_target_mask(inputs)
+    def call(self, inputs, mask=None, training=None):
+        target_mask = self._compute_target_mask(inputs, mask=mask)
 
         def dropped_mask():
             drop_mask = K.switch(

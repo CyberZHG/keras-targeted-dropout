@@ -75,3 +75,39 @@ class TestTargetedDropout(unittest.TestCase):
         zero_num = np.sum((outputs == 0.0).astype(keras.backend.floatx()))
         actual_rate = zero_num / 100000.0
         self.assertTrue(0.15 < actual_rate < 0.17)
+
+    def test_masked(self):
+        model = keras.models.Sequential()
+        model.add(keras.layers.Masking(
+            batch_size=None,
+            input_shape=(None, None),
+        ))
+        model.add(TargetedDropout(
+            drop_rate=0.4,
+            target_rate=0.6,
+        ))
+        model.compile(optimizer='adam', loss='mse')
+        model_path = os.path.join(tempfile.gettempdir(), 'keras_targeted_dropout_%f.h5' % random.random())
+        model.save(model_path)
+        model = keras.models.load_model(
+            model_path,
+            custom_objects={'TargetedDropout': TargetedDropout},
+        )
+        model.summary()
+
+        inputs = np.array([
+            [[1, 5, 2, 3]],
+            [[0, 0, 0, 0]],
+            [[5, 2, 5, 1]],
+            [[2, 9, 4, 3]],
+            [[4, 7, 5, 6]],
+        ])
+        outputs = model.predict(inputs)
+        expected = np.array([
+            [[0., 0., 0., 0.]],
+            [[0., 0., 0., 0.]],
+            [[5., 0., 5., 0.]],
+            [[0., 9., 0., 0.]],
+            [[4., 7., 5., 6.]],
+        ])
+        self.assertTrue(np.allclose(expected, outputs), (expected, outputs))
