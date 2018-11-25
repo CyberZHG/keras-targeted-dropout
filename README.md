@@ -28,4 +28,4 @@ model.summary()
 
 The final dropout rate will be `drop_rate` times `target_rate`.
 
-See [fashion mnist demo](./demo/mnist.py).
+See [Fashion MNIST demo](https://github.com/CyberZHG/keras-targeted-dropout/blob/master/demo/mnist.py).

@@ -1,6 +1,5 @@
 import keras
 import keras.backend as K
-import tensorflow as tf
 
 
 class TargetedDropout(keras.layers.Layer):
@@ -41,7 +40,7 @@ class TargetedDropout(keras.layers.Layer):
         norm = K.abs(inputs)
         channeled_norm = K.transpose(K.reshape(norm, (channel_dim, input_shape[-1])))
         idx = K.cast(self.target_rate * K.cast(channel_dim, K.floatx()), 'int32')
-        threshold = -tf.nn.top_k(-channeled_norm, k=idx)[0][:, -1]
+        threshold = -K.tf.nn.top_k(-channeled_norm, k=idx).values[:, -1]
         threshold = K.reshape(K.tile(threshold, [channel_dim]), input_shape)
         target_mask = K.switch(
             norm <= threshold,
