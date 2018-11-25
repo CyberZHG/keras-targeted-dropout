@@ -53,16 +53,16 @@ print('Score of normal dropout:\t%.4f' % dropout_score[1])
 
 def get_targeted_dropout_model():
     model = keras.models.Sequential()
-    model.add(TargetedDropout(input_shape=(28, 28, 1), rate=0.3, name='Input-Dropout'))
+    model.add(TargetedDropout(input_shape=(28, 28, 1), drop_rate=0.2, target_rate=0.4, name='Input-Dropout'))
     model.add(keras.layers.Conv2D(filters=64, kernel_size=3, activation='relu', padding='same', name='Conv-1'))
     model.add(keras.layers.MaxPool2D(pool_size=2, name='Pool-1'))
-    model.add(TargetedDropout(rate=0.2, name='Dropout-1'))
+    model.add(TargetedDropout(drop_rate=0.2, target_rate=0.4, name='Dropout-1'))
     model.add(keras.layers.Conv2D(filters=32, kernel_size=3, activation='relu', padding='same', name='Conv-2'))
     model.add(keras.layers.MaxPool2D(pool_size=2, name='Pool-2'))
-    model.add(TargetedDropout(rate=0.2, name='Dropout-2'))
+    model.add(TargetedDropout(drop_rate=0.2, target_rate=0.4, name='Dropout-2'))
     model.add(keras.layers.Flatten(name='Flatten'))
     model.add(keras.layers.Dense(units=256, activation='relu', name='Dense'))
-    model.add(TargetedDropout(rate=0.2, name='Dense-Dropout'))
+    model.add(TargetedDropout(drop_rate=0.2, target_rate=0.4, name='Dense-Dropout'))
     model.add(keras.layers.Dense(units=10, activation='softmax', name='Softmax'))
     model.compile(
         optimizer='adam',
