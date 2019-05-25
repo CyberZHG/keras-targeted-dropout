@@ -6,16 +6,17 @@
 ![Downloads](https://img.shields.io/pypi/dm/keras-targeted-dropout.svg)
 ![License](https://img.shields.io/pypi/l/keras-targeted-dropout.svg)
 
-Unofficial implementation of [Targeted Dropout](https://openreview.net/pdf?id=HkghWScuoQ) with tensorflow backend.
-Note that there is no model compression in this implementation.
+[Targeted Dropout](https://openreview.net/pdf?id=HkghWScuoQ)的非官方实现，只支持tensorflow后端。实现中没有对模型做压缩，所以不会有任何计算效率上的提升。
 
-## Install
+## 安装
 
 ```bash
 pip install keras-targeted-dropout
 ```
 
-## Usage
+## 使用
+
+`TargetedDropout`是一个`Wrapper`，第一个参数是要被处理的原始层：
 
 ```python
 import keras
@@ -34,9 +35,9 @@ model.compile(optimizer='adam', loss='mse')
 model.summary()
 ```
 
-* `drop_rate`: Dropout rate for each pixel.
-* `target_rate`: The proportion of bottom weights selected as candidates
-* `drop_patterns`: A list of names of weights to be dropped.
-* `mode`: `TargetedDropout.MODE_UNIT` or `TargetedDropout.MODE_WEIGHT`.
+* `drop_rate`: 处于目标候选位置的参数的置0概率。
+* `target_rate`: 选择参数作为目标候选的比例。
+* `drop_patterns`: 要进行随机置0的参数名称，要求参数的名称和变量名相同，官方实现一般满足这一点，对于自定义层需要留意。
+* `mode`: `TargetedDropout.MODE_UNIT`或`TargetedDropout.MODE_WEIGHT`。`MODE_UNIT`会将整列置0，`MODE_WEIGHT`会在每列中分别找元素置0。
 
-The final dropout rate will be `drop_rate` times `target_rate`.
+不管那种模式，最终训练过程中被置0的概率都为`drop_rate`乘`target_rate`。

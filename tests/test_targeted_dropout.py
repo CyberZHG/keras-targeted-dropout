@@ -1,113 +1,127 @@
 import unittest
 import os
 import tempfile
-import random
-import keras
 import numpy as np
+from keras_targeted_dropout.backend import keras
+from keras_targeted_dropout.backend import backend as K
 from keras_targeted_dropout import TargetedDropout
+
+
+class Weight(keras.layers.Layer):
+
+    def __init__(self, **kwargs):
+        super(Weight, self).__init__(**kwargs)
+        self.kernel = None
+
+    def build(self, input_shape):
+        self.kernel = self.add_weight(
+            shape=(1000, 100),
+            name='kernel',
+            initializer='glorot_uniform',
+        )
+
+    def compute_output_shape(self, input_shape):
+        return K.int_shape(self.kernel)
+
+    def call(self, inputs, mask=None, training=None):
+        return K.expand_dims(self.kernel, axis=0)
 
 
 class TestTargetedDropout(unittest.TestCase):
 
-    def test_target_rate(self):
+    def test_weight_drop_shape(self):
         model = keras.models.Sequential()
-        model.add(TargetedDropout(input_shape=(None, None), drop_rate=0.0, target_rate=0.4))
-        model.compile(optimizer='adam', loss='mse')
-        model_path = os.path.join(tempfile.gettempdir(), 'keras_targeted_dropout_%f.h5' % random.random())
-        model.save(model_path)
-        model = keras.models.load_model(
-            model_path,
-            custom_objects={'TargetedDropout': TargetedDropout},
-        )
-
-        inputs = np.reshape(np.arange(20), (-1, 1, 4))
-        outputs = model.predict(inputs)
-        expected = np.array([
-            [[0., 0., 0., 0.]],
-            [[0., 0., 0., 0.]],
-            [[8., 9., 10., 11.]],
-            [[12., 13., 14., 15.]],
-            [[16., 17., 18., 19.]],
-        ])
-        self.assertTrue(np.allclose(expected, outputs), (expected, outputs))
-
-        inputs = np.array([
-            [[1, 5, 2, 3]],
-            [[4, 8, 1, 5]],
-            [[5, 2, 5, 1]],
-            [[2, 9, 4, 3]],
-            [[4, 7, 5, 6]],
-        ])
-        outputs = model.predict(inputs)
-        expected = np.array([
-            [[0., 0., 0., 0.]],
-            [[4., 8., 0., 5.]],
-            [[5., 0., 5., 0.]],
-            [[0., 9., 4., 0.]],
-            [[4., 7., 5., 6.]],
-        ])
-        self.assertTrue(np.allclose(expected, outputs), (expected, outputs))
-
-        inputs = np.random.random((100, 10, 10))
-        outputs = model.predict(inputs)
-        zero_num = np.sum((outputs == 0.0).astype(keras.backend.floatx()))
-        actual_rate = zero_num / 10000.0
-        self.assertTrue(0.39 < actual_rate < 0.41)
-
-    def test_drop_rate(self):
-        model = keras.models.Sequential()
-        model.add(keras.layers.Lambda(
-            function=lambda x: TargetedDropout(
-                drop_rate=0.4,
-                target_rate=0.4,
-            )(x, training=True),
-            input_shape=(None, None, None),
+        model.add(TargetedDropout(
+            layer=Weight(),
+            drop_rate=0.0,
+            target_rate=0.35,
+            drop_patterns=['kernel'],
+            mode=TargetedDropout.MODE_WEIGHT,
+            input_shape=(1,)
         ))
-        model.compile(optimizer='adam', loss='mse')
-        model_path = os.path.join(tempfile.gettempdir(), 'keras_targeted_dropout_%f.h5' % random.random())
-        model.save(model_path)
-        model = keras.models.load_model(
-            model_path,
-            custom_objects={'TargetedDropout': TargetedDropout},
-        )
-        inputs = np.random.random((100, 10, 10, 10))
-        outputs = model.predict(inputs)
-        zero_num = np.sum((outputs == 0.0).astype(keras.backend.floatx()))
-        actual_rate = zero_num / 100000.0
-        self.assertTrue(0.15 < actual_rate < 0.17)
+        model.compile('sgd', 'mse')
 
-    def test_masked(self):
+        model_path = os.path.join(tempfile.gettempdir(), 'keras_targeted_dropout_%f.h5' % np.random.random())
+        model.save(model_path)
+        model = keras.models.load_model(model_path, custom_objects={
+            'Weight': Weight,
+            'TargetedDropout': TargetedDropout,
+        })
+
+        dropped = model.predict(np.ones((1, 1)))[0]
+        row, col = dropped.shape
+        for c in range(col):
+            rate = np.sum(np.equal(dropped[:, c], 0.0)) / row
+            self.assertGreater(rate, 0.34)
+            self.assertLess(rate, 0.36)
+        rate = np.mean(np.equal(dropped, 0.0))
+        self.assertGreater(rate, 0.34)
+        self.assertLess(rate, 0.36)
+
+    def test_unit_drop_shape(self):
         model = keras.models.Sequential()
-        model.add(keras.layers.Masking(
-            batch_size=None,
-            input_shape=(None, None),
+        model.add(TargetedDropout(
+            layer=Weight(),
+            drop_rate=0.0,
+            target_rate=0.35,
+            drop_patterns=['kernel'],
+            mode=TargetedDropout.MODE_UNIT,
+            input_shape=(1,)
+        ))
+        model.compile('sgd', 'mse')
+
+        model_path = os.path.join(tempfile.gettempdir(), 'keras_targeted_dropout_%f.h5' % np.random.random())
+        model.save(model_path)
+        model = keras.models.load_model(model_path, custom_objects={
+            'Weight': Weight,
+            'TargetedDropout': TargetedDropout,
+        })
+
+        dropped = model.predict(np.ones((1, 1)))[0]
+        col = dropped.shape[-1]
+        count = 0
+        for c in range(col):
+            if np.sum(dropped[:, c]) == 0.0:
+                count += 1
+        self.assertEqual(35, count)
+        rate = np.mean(np.equal(dropped, 0.0))
+        self.assertGreater(rate, 0.34)
+        self.assertLess(rate, 0.36)
+
+    @staticmethod
+    def _get_data(w=None):
+        if w is None:
+            w = np.random.standard_normal((5, 2))
+        x = np.random.standard_normal((2048, 5))
+        y = np.dot(x, w).argmax(axis=-1)
+        return x, y, w
+
+    def test_fit(self):
+        model = keras.models.Sequential()
+        model.add(TargetedDropout(
+            layer=keras.layers.Dense(units=3, activation='tanh'),
+            drop_rate=0.8,
+            target_rate=0.2,
+            drop_patterns=['kernel'],
+            mode=TargetedDropout.MODE_WEIGHT,
+            input_shape=(5,)
         ))
         model.add(TargetedDropout(
-            drop_rate=0.4,
-            target_rate=0.6,
+            layer=keras.layers.Dense(units=2, activation='softmax'),
+            drop_rate=0.8,
+            target_rate=0.2,
+            drop_patterns=['kernel'],
+            mode=TargetedDropout.MODE_UNIT,
         ))
-        model.compile(optimizer='adam', loss='mse')
-        model_path = os.path.join(tempfile.gettempdir(), 'keras_targeted_dropout_%f.h5' % random.random())
-        model.save(model_path)
-        model = keras.models.load_model(
-            model_path,
-            custom_objects={'TargetedDropout': TargetedDropout},
-        )
-        model.summary()
+        model.compile('adam', 'sparse_categorical_crossentropy')
 
-        inputs = np.array([
-            [[1, 5, 2, 3]],
-            [[0, 0, 0, 0]],
-            [[5, 2, 5, 1]],
-            [[2, 9, 4, 3]],
-            [[4, 7, 5, 6]],
-        ])
-        outputs = model.predict(inputs)
-        expected = np.array([
-            [[0., 0., 0., 0.]],
-            [[0., 0., 0., 0.]],
-            [[5., 0., 5., 0.]],
-            [[0., 9., 0., 0.]],
-            [[4., 7., 5., 6.]],
-        ])
-        self.assertTrue(np.allclose(expected, outputs), (expected, outputs))
+        x, y, w = self._get_data()
+        model.fit(x, y, epochs=50)
+
+        model_path = os.path.join(tempfile.gettempdir(), 'keras_targeted_dropout_%f.h5' % np.random.random())
+        model.save(model_path)
+        model = keras.models.load_model(model_path, custom_objects={'TargetedDropout': TargetedDropout})
+
+        x, y, _ = self._get_data(w)
+        predicted = model.predict(x).argmax(axis=-1)
+        self.assertLess(np.sum(np.not_equal(y, predicted)), x.shape[0] // 10)
